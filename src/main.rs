@@ -16,45 +16,80 @@ use bevy::render::mesh::Mesh;
 use bevy::transform::components::Transform;
 use bevy::utils::petgraph::visit::Walker;
 
+struct Player {
+    speed: f32,
+    is_flying: bool,
+    is_on_ground: bool,
+    jump_force: f32,
+    gravity: f32,
+    velocity: Vec3,
+}
+
+impl Default for Player {
+    fn default() -> Self {
+        Self {
+            speed: 5.0,
+            is_flying: false,
+            is_on_ground: true,
+            jump_force: 10.0,
+            gravity: -9.81,
+            velocity: Vec3::ZERO,
+        }
+    }
+}
+
 fn camera_movement(
     time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut mouse_motion_events: EventReader<MouseMotion>,
     mut query: Query<&mut Transform, With<Camera>>,
 ) {
+
     let mut delta_rotation = Vec2::ZERO;
+
     for event in mouse_motion_events.read() {
         delta_rotation += event.delta;
     }
+
     let mouse_sensitivity: f32 = 0.2;
     let yaw = delta_rotation.x * mouse_sensitivity.to_radians();
     let pitch = delta_rotation.y * mouse_sensitivity.to_radians();
 
     for mut transform in query.iter_mut() {
         let mut direction = Vec3::ZERO;
+
         if keyboard_input.pressed(KeyCode::KeyW) {
             direction.z -= 1.0;
         }
+
         if keyboard_input.pressed(KeyCode::KeyS) {
             direction.z += 1.0;
         }
+
         if keyboard_input.pressed(KeyCode::KeyA) {
             direction.x -= 1.0;
         }
+
         if keyboard_input.pressed(KeyCode::KeyD) {
             direction.x += 1.0;
         }
+
         if keyboard_input.pressed(KeyCode::KeyQ) {
             direction.y += 1.0;
         }
+
         if keyboard_input.pressed(KeyCode::KeyE) {
             direction.y -= 1.0;
         }
+
         transform.rotation *= Quat::from_rotation_y(yaw);
+
         let current_pitch = Quat::from_rotation_x(pitch);
         transform.rotation = current_pitch * transform.rotation;
+
         let speed = 5.0;
         let rotated_direction = transform.rotation.mul_vec3(direction);
+
         transform.translation += time.delta_seconds() * rotated_direction * speed;
     }
 }
@@ -64,7 +99,6 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut query: Query<(Entity, &Handle<Mesh>), With<Handle<Scene>>>,
 ) {
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(3.0, 3.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -86,6 +120,7 @@ fn setup(
         ([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5, 1.0]),
         ([-0.5, 0.5, -0.5], [0.0, 0.0, 0.0, 1.0]),
     ];
+
     let vertex_positions: Vec<[f32; 3]> = vertices.iter()
         .map(|&(pos, _)| pos)
         .collect();
@@ -116,6 +151,7 @@ fn setup(
     });
 
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, Default::default());
+
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertex_positions, );
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, vertex_colors, );
     mesh.insert_indices(Indices::U32(indices), );
