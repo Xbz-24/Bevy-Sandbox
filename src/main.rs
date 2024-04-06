@@ -1,5 +1,5 @@
 use std::default::Default;
-use bevy::a11y::accesskit::Size;
+use std::time::Duration;
 use bevy::app::App;
 use bevy::asset::Assets;
 use bevy::core_pipeline::core_3d::Camera3dBundle;
@@ -27,6 +27,8 @@ struct Player {
     jump_force: f32,
     gravity: f32,
     velocity: Vec3,
+    float_timer: Timer,
+    can_float: bool,
 }
 
 impl Default for Player {
@@ -35,6 +37,8 @@ impl Default for Player {
             speed: 3.0,
             is_flying: false,
             is_on_ground: true,
+            can_float: false,
+            float_timer: Timer::from_seconds(1.0, TimerMode::default()),
             jump_force: 13.0,
             gravity: -9.81,
             velocity: Vec3::ZERO,
@@ -47,25 +51,46 @@ fn camera_movement(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut mouse_motion_events: EventReader<MouseMotion>,
     mut query: Query<(&mut Transform, &mut Player), With<Camera>>,
+    mut commands: Commands,
 ) {
     let delta_time = time.delta_seconds();
+    let mouse_sensitivity: f32 = 0.2; 
+    let arrow_key_sensitivity: f32 = 1.5; 
     let acceleration = 05.0;
     let friction= 04.0;
 
     let mut delta_rotation = Vec2::ZERO;
 
+    let mut yaw: f32 = 0.0;
+    let mut pitch: f32 = 0.0;
+    
     for event in mouse_motion_events.read() {
-        delta_rotation += event.delta;
+        yaw += event.delta.x * mouse_sensitivity;
+        pitch -= event.delta.y * mouse_sensitivity; 
     }
 
-    let mouse_sensitivity: f32 = 0.2;
-    let yaw = delta_rotation.x * mouse_sensitivity.to_radians();
-    let pitch = delta_rotation.y * mouse_sensitivity.to_radians();
+
+    if keyboard_input.pressed(KeyCode::ArrowUp) {
+        pitch += arrow_key_sensitivity;
+    }
+    if keyboard_input.pressed(KeyCode::ArrowDown) {
+        pitch -= arrow_key_sensitivity;
+    }
+    if keyboard_input.pressed(KeyCode::ArrowLeft) {
+        yaw -= arrow_key_sensitivity;
+    }
+    if keyboard_input.pressed(KeyCode::ArrowRight) {
+        yaw += arrow_key_sensitivity;
+    }
+
+    pitch = pitch.clamp(-89.9, 89.9);
 
 
     for (mut transform, mut player) in query.iter_mut() {
+        if player.float_timer.tick(time.delta()).just_finished() {
+            player.can_float = false;
+        }
         let mut direction = Vec3::ZERO;
-
         if keyboard_input.pressed(KeyCode::KeyW) {
             direction.z -= 1.0;
         }
@@ -79,12 +104,21 @@ fn camera_movement(
             direction.x += 1.0;
         }
 
+        if direction.length_squared() > 0.0 {
+            direction = direction.normalize() * player.speed;
+        }
+
         if direction != Vec3::ZERO {
             direction = direction.normalize() * player.speed;
         }
+
         let velocity_change = direction - player.velocity;
         let acceleration_effect = velocity_change.clamp_length_max(acceleration * delta_time);
-        player.velocity += acceleration_effect;
+        let forward = transform.forward();
+        let right = transform.right();
+        player.velocity += (forward * direction.z + right * direction.x) * acceleration * delta_time;
+        player.velocity = player.velocity.lerp(Vec3::ZERO, friction * delta_time);
+
 
         if direction == Vec3::ZERO || velocity_change.length() > player.speed * 0.9 {
             player.velocity = player.velocity.lerp(Vec3::ZERO, friction * delta_time);
@@ -92,13 +126,16 @@ fn camera_movement(
 
         if keyboard_input.just_pressed(KeyCode::Space) {
             if player.is_on_ground {
-                player.velocity.y += player.jump_force;
+                player.velocity.y = player.jump_force;
                 player.is_on_ground = false;
-            } else if !player.is_flying {
-                player.is_flying = true;
-                player.velocity.y = 0.0;
+                player.float_timer.reset();
+            } else if player.can_float {
+                if keyboard_input.pressed(KeyCode::Space) {
+                    player.velocity.y += 0.5;
+                }
             } else {
-                player.is_flying = false;
+                player.can_float = true;
+                player.float_timer = Timer::new(Duration::from_millis(200), TimerMode::default());
             }
         }
 
@@ -107,6 +144,7 @@ fn camera_movement(
         }
 
         transform.translation += player.velocity * delta_time;
+
         if transform.translation.y <= 0.0 {
             player.is_on_ground = true;
             player.velocity.y = 0.0;
@@ -122,6 +160,11 @@ fn camera_movement(
         let forward = transform.forward();
         let right = transform.right();
         transform.translation += (forward * direction.z + right * direction.x) * delta_time;
+
+        let rotation = Quat::from_axis_angle(Vec3::Y, yaw.to_radians())
+            * Quat::from_axis_angle(Vec3::X, pitch.to_radians());
+        transform.rotation = rotation;
+
     }
 }
 
@@ -227,18 +270,23 @@ fn setup(
         z_index: ZIndex::default(),
         ..Default::default()
     });
+
+    commands.spawn(SceneBundle {
+        scene: asset_server.load("sponza/sponza.glb#Scene0"),
+        ..default()
+    });
 }
 
 fn main() {
-
     let mut app = App::new();
+    
     app.add_plugins(DefaultPlugins.set(WindowPlugin{
         primary_window: Some(Window {
-            title: "aqua waifu".to_string(),
+            title: "aqua-waifu".to_string(),
             present_mode: bevy::window::PresentMode::Immediate,
             resizable: true,
             cursor: bevy::window::Cursor::default(),
-            position: bevy::window::WindowPosition::Centered(bevy::window::MonitorSelection::Primary),
+            position: WindowPosition::Centered(MonitorSelection::Primary),
             resolution: bevy::window::WindowResolution::new(1920., 1080.).with_scale_factor_override(1.0),
             name: None,
             ..default()
