@@ -16,6 +16,7 @@ use bevy::render::mesh::Mesh;
 use bevy::transform::components::Transform;
 use bevy::utils::petgraph::visit::Walker;
 
+#[derive(Component)]
 struct Player {
     speed: f32,
     is_flying: bool,
@@ -42,9 +43,8 @@ fn camera_movement(
     time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut mouse_motion_events: EventReader<MouseMotion>,
-    mut query: Query<&mut Transform, With<Camera>>,
+    mut query: Query<(&mut Transform, &mut Player), With<Camera>>,
 ) {
-
     let mut delta_rotation = Vec2::ZERO;
 
     for event in mouse_motion_events.read() {
@@ -55,42 +55,56 @@ fn camera_movement(
     let yaw = delta_rotation.x * mouse_sensitivity.to_radians();
     let pitch = delta_rotation.y * mouse_sensitivity.to_radians();
 
-    for mut transform in query.iter_mut() {
+    let delta_time = time.delta_seconds();
+
+    for (mut transform, mut player) in query.iter_mut() {
         let mut direction = Vec3::ZERO;
 
         if keyboard_input.pressed(KeyCode::KeyW) {
             direction.z -= 1.0;
         }
-
         if keyboard_input.pressed(KeyCode::KeyS) {
             direction.z += 1.0;
         }
-
         if keyboard_input.pressed(KeyCode::KeyA) {
             direction.x -= 1.0;
         }
-
         if keyboard_input.pressed(KeyCode::KeyD) {
             direction.x += 1.0;
         }
 
-        if keyboard_input.pressed(KeyCode::KeyQ) {
-            direction.y += 1.0;
+        if keyboard_input.just_pressed(KeyCode::Space) {
+            if player.is_on_ground {
+                player.velocity.y += player.jump_force;
+                player.is_on_ground = false;
+            } else if !player.is_flying {
+                player.is_flying = true;
+                player.velocity.y = 0.0;
+            } else {
+                player.is_flying = false;
+            }
         }
 
-        if keyboard_input.pressed(KeyCode::KeyE) {
-            direction.y -= 1.0;
+        if !player.is_flying {
+            player.velocity.y += player.gravity * delta_time;
         }
 
-        transform.rotation *= Quat::from_rotation_y(yaw);
+        transform.translation += player.velocity * delta_time;
+        if transform.translation.y <= 0.0 {
+            player.is_on_ground = true;
+            player.velocity.y = 0.0;
+            transform.translation.y = 0.0;
+        } else {
+            player.is_on_ground = false;
+        }
 
-        let current_pitch = Quat::from_rotation_x(pitch);
-        transform.rotation = current_pitch * transform.rotation;
+        if direction != Vec3::ZERO {
+            direction = direction.normalize() * player.speed;
+        }
 
-        let speed = 5.0;
-        let rotated_direction = transform.rotation.mul_vec3(direction);
-
-        transform.translation += time.delta_seconds() * rotated_direction * speed;
+        let forward = transform.forward();
+        let right = transform.right();
+        transform.translation += (forward * direction.z + right * direction.x) * delta_time;
     }
 }
 
@@ -103,7 +117,7 @@ fn setup(
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(3.0, 3.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..std::default::Default::default()
-    });
+    }).insert(Player::default());
 
     commands.spawn(SceneBundle{
         scene: asset_server.load("gltf/scene.gltf#Scene0"),
@@ -173,13 +187,28 @@ fn setup(
 }
 
 fn main() {
+
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins(DefaultPlugins.set(WindowPlugin{
+        primary_window: Some(Window {
+            title: "aqua waifu".to_string(),
+            present_mode: bevy::window::PresentMode::Immediate,
+            resizable: true,
+            cursor: bevy::window::Cursor::default(),
+            position: bevy::window::WindowPosition::Centered(bevy::window::MonitorSelection::Primary),
+            resolution: bevy::window::WindowResolution::new(1920., 1080.).with_scale_factor_override(1.0),
+            name: None,
+            ..default()
+        }),
+        ..default()
+    }));
+
     #[cfg(debug_assertions)]
     {
         use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
         app.add_plugins(FrameTimeDiagnosticsPlugin::default());
     }
+
     app.add_systems(Startup, setup);
     app.add_systems(Update, camera_movement);
     app.run();
