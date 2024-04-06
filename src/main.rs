@@ -1,4 +1,5 @@
 use std::default::Default;
+use bevy::a11y::accesskit::Size;
 use bevy::app::App;
 use bevy::asset::Assets;
 use bevy::core_pipeline::core_3d::Camera3dBundle;
@@ -14,7 +15,9 @@ use bevy::render::color::Color;
 use bevy::render::mesh::{Indices, PrimitiveTopology, shape};
 use bevy::render::mesh::Mesh;
 use bevy::transform::components::Transform;
+use bevy::ui::{ContentSize, FocusPolicy, widget};
 use bevy::utils::petgraph::visit::Walker;
+use bevy::window::PrimaryWindow;
 
 #[derive(Component)]
 struct Player {
@@ -29,10 +32,10 @@ struct Player {
 impl Default for Player {
     fn default() -> Self {
         Self {
-            speed: 5.0,
+            speed: 3.0,
             is_flying: false,
             is_on_ground: true,
-            jump_force: 10.0,
+            jump_force: 13.0,
             gravity: -9.81,
             velocity: Vec3::ZERO,
         }
@@ -45,6 +48,10 @@ fn camera_movement(
     mut mouse_motion_events: EventReader<MouseMotion>,
     mut query: Query<(&mut Transform, &mut Player), With<Camera>>,
 ) {
+    let delta_time = time.delta_seconds();
+    let acceleration = 05.0;
+    let friction= 04.0;
+
     let mut delta_rotation = Vec2::ZERO;
 
     for event in mouse_motion_events.read() {
@@ -55,7 +62,6 @@ fn camera_movement(
     let yaw = delta_rotation.x * mouse_sensitivity.to_radians();
     let pitch = delta_rotation.y * mouse_sensitivity.to_radians();
 
-    let delta_time = time.delta_seconds();
 
     for (mut transform, mut player) in query.iter_mut() {
         let mut direction = Vec3::ZERO;
@@ -71,6 +77,17 @@ fn camera_movement(
         }
         if keyboard_input.pressed(KeyCode::KeyD) {
             direction.x += 1.0;
+        }
+
+        if direction != Vec3::ZERO {
+            direction = direction.normalize() * player.speed;
+        }
+        let velocity_change = direction - player.velocity;
+        let acceleration_effect = velocity_change.clamp_length_max(acceleration * delta_time);
+        player.velocity += acceleration_effect;
+
+        if direction == Vec3::ZERO || velocity_change.length() > player.speed * 0.9 {
+            player.velocity = player.velocity.lerp(Vec3::ZERO, friction * delta_time);
         }
 
         if keyboard_input.just_pressed(KeyCode::Space) {
@@ -113,6 +130,7 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(3.0, 3.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -182,6 +200,31 @@ fn setup(
 
     commands.spawn(PointLightBundle {
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
+        ..Default::default()
+    });
+
+    let window = window_query.single();
+    let (window_width, window_height) = (window.width(), window.height());
+
+    let crosshair_texture = asset_server.load("images/crosshair.png");
+    let nyaaaa = Vec2::new(16.0, 16.0);
+    commands.spawn(ImageBundle {
+        node: Node::default(),
+        style: Style {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(window_height / 2.0 - 8.0),
+            left: Val::Px(window_width / 2.0 - 8.0),
+            ..Default::default()
+        },
+        calculated_size: ContentSize::fixed_size(nyaaaa),
+        background_color: BackgroundColor::DEFAULT,
+        image: UiImage::new(crosshair_texture),
+        image_size: widget::UiImageSize::default(),
+        focus_policy: FocusPolicy::Pass,
+        transform: Transform::default(),
+        global_transform: GlobalTransform::default(),
+        visibility: Visibility::Visible,
+        z_index: ZIndex::default(),
         ..Default::default()
     });
 }
