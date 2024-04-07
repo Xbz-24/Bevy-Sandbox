@@ -4,7 +4,7 @@
 > This project is a work in progress and is not yet ready for production use. Please refer to the [Contributing](#contributing) section for more information on how to contribute to this project.
 
 Welcome to "aqua-waifu", a game developed with the Bevy engine. This project aims to create an engaging experience with customizable controls and immersive gameplay mechanics.
-
+![image](https://github.com/Xbz-24/Bevy-Sandbox/assets/68678258/d7a7c2ab-9163-42d2-ab0e-15c52375ec0c)
 ## Features
 
 - **Customizable Window Settings**: Launches in a 1920x1080 window, centered on the primary monitor with immediate present mode for reduced latency.
